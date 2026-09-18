@@ -45,6 +45,10 @@ cinedata-analytics-databricks/
 │   ├── catalogo_bronze.png         # Tabelas da camada Bronze no Unity Catalog
 │   ├── catalogo_silver.png         # Tabelas da camada Silver no Unity Catalog
 │   └── catalogo_gold.png           # Tabelas da camada Gold no Unity Catalog
+│   ├── dashboard_1_visao_geral.png # Dashboard: KPIs e top 10 receita
+│   ├── dashboard_2_rankings.png    # Dashboard: gêneros, produtoras, popularidade, atores
+│   ├── dashboard_3_tendencia.png   # Dashboard: receita por ano
+│   ├── dashboard.pdf               # Painel executivo completo (PDF)
 ├── .gitignore
 └── README.md
 ```
@@ -239,6 +243,22 @@ to_Bronze  ──►  to_Silver  ──►  to_Gold
 ![Execução do Job](docs/execucao_job.png)
 
 ---
+
+### Painel executivo (Databricks AI/BI Dashboard)
+
+As mesmas perguntas de negócio, publicadas como dashboard sobre a camada Gold:
+
+📄 [Ver o painel completo em PDF](docs/dashboard.pdf)
+
+**Visão geral:** KPIs de receita e top 10 filmes por receita
+![Dashboard - Visão geral](docs/dashboard_1_visao_geral.png)
+
+**Rankings:** gêneros, produtoras, popularidade e atores
+![Dashboard - Rankings](docs/dashboard_2_rankings.png)
+
+**Tendência:** receita por ano de lançamento, com o impacto da pandemia em 2020
+![Dashboard - Tendência](docs/dashboard_3_tendencia.png)
+
 
 ## ▶️ Como executar
 

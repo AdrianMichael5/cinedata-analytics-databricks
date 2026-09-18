@@ -41,7 +41,10 @@ cinedata-analytics-databricks/
 ├── jobs/
 │   └── job.yaml                    # Exportação do Job cinedata_etl_pipeline
 ├── docs/
-│   └── execucao_job.png            # Print da execução bem-sucedida do Job
+│   ├── execucao_job.png            # Print da execução bem-sucedida do Job
+│   ├── catalogo_bronze.png         # Tabelas da camada Bronze no Unity Catalog
+│   ├── catalogo_silver.png         # Tabelas da camada Silver no Unity Catalog
+│   └── catalogo_gold.png           # Tabelas da camada Gold no Unity Catalog
 ├── .gitignore
 └── README.md
 ```
@@ -59,6 +62,11 @@ flowchart LR
     D --> F[Analytics / BI]
     E --> G[Vector Search / RAG]
 ```
+### Estrutura no Unity Catalog
+
+| Bronze | Silver | Gold |
+|---|---|---|
+| ![Camada Bronze](docs/catalogo_bronze.png) | ![Camada Silver](docs/catalogo_silver.png) | ![Camada Gold](docs/catalogo_gold.png) |
 
 ### 🥉 Bronze — `Landing_to_Bronze`
 - Lê os 5 CSVs do Volume `/Volumes/cinedata_analytics/bronze/raw_inputs/` **sem alteração de conteúdo** (todas as colunas como `STRING`, para não perder valores sujos antes do tratamento).

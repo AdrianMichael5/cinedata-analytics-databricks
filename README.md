@@ -62,6 +62,7 @@ flowchart LR
     D --> F[Analytics / BI]
     E --> G[Vector Search / RAG]
 ```
+
 ### Estrutura no Unity Catalog
 
 | Bronze | Silver | Gold |
@@ -142,6 +143,72 @@ Exemplo gerado:
 **Tratamento de nulos:** `concat()` retorna `NULL` se qualquer campo for nulo, o que faria o filme sumir silenciosamente. Cada campo recebe `coalesce()` com um fallback (`"valor não divulgado"`, `"diretor não informado"`, `"Sinopse não disponível."`...) **antes** da concatenação. Resultado: **97.611 documentos para 97.611 filmes, 0 nulos**. A tabela tem **Change Data Feed** habilitado, requisito para um índice Delta Sync do Vector Search.
 
 ---
+
+## 🔍 Achados de Qualidade de Dados
+
+Além das regras previstas no escopo, a análise exploratória dos dados brutos e as validações ao longo do pipeline revelaram problemas **não documentados** que distorceriam os resultados se não fossem tratados.
+
+| # | Problema | Como foi detectado | Como foi tratado | Impacto |
+|---|---|---|---|---|
+| 1 | **Perda silenciosa de registros na leitura do CSV.** Sinopses usam aspas no padrão RFC 4180 (`""`), mas o Spark usa `\` como escape por padrão | Comparação entre o número de linhas lidas pelo Spark e o número real de registros do arquivo | Leitura com `quote='"'`, `escape='"'` e `multiLine=True` | **~5 mil filmes** (101.571 vs 106.596) seriam perdidos já na Bronze, sem nenhum erro |
+| 2 | **Terceiro separador de gêneros.** Além de `,` e `;` (citados no escopo), a base usa `\|` (`Comedy\|Drama`) | Contagem de linhas por tipo de separador na coluna `genres` | Os três separadores são padronizados antes do `split`, e os valores são validados contra o domínio oficial de 19 gêneros do TMDB | Sem o tratamento, milhares de combinações como `Comedy\|Drama` virariam "gêneros" falsos |
+| 3 | **Duplicatas dentro da mesma carga.** O mesmo `id` aparece várias vezes no mesmo arquivo, com versões diferentes (ex.: receita `0` em uma linha e `Unknown` em outra) | Contagem de ids repetidos por arquivo e comparação das versões | Desempate pela `ingestion_datetime` (regra do escopo) e, em seguida, pela **versão mais completa** (mais campos não nulos) | Sem o desempate, a escolha entre as versões seria aleatória a cada execução |
+| 4 | **Países, idiomas e keywords vazados para colunas de pessoas** (ex.: `English` e `United States of America` como diretores) por column shift | Ranking de diretores mais frequentes após a limpeza inicial | Descarte por **regra de frequência**: um valor só é removido se aparece mais vezes como país/idioma/keyword do que como pessoa. As colunas de país e idioma também estão contaminadas, então uma lista negra direta apagaria nomes válidos | `English` (~300 filmes como "diretor") removido; `Kevin Dunn` (77 filmes) e produtoras como `BBC` e `ZDF` preservados |
+| 5 | **Anos vazados para a popularidade** (valores `2020.0`, `2019.0`, `1969.0`). Em *Battipaglia 1969*, o valor é o ano do título | Top 5 de popularidade com valores inteiros exatos, enquanto a popularidade real do TMDB tem casas decimais | Inteiros exatos entre 1870 e 2030 são tratados como resíduo de column shift → `NULL` | 3 filmes obscuros deixaram de aparecer no top 5 de popularidade |
+| 6 | **Títulos em caixa baixa ou alta** (ex.: `spider-man: no way home`, `AVENGERS: INFINITY WAR`) | Inspeção dos rankings de receita e popularidade | Quando o `original_title` tem o mesmo texto com a capitalização correta, a grafia dele é usada | ~3,5 mil títulos corrigidos |
+| 7 | **O mesmo filme cadastrado com vários ids** (ex.: *Die Hart 2: Die Harter* com 25 ids na mesma data; *Emesis Blue* com 19) | Resultado improvável na pergunta 5: um ator com 64 filmes em 2 anos e 20 atores empatados com 59 | Nas análises por pessoa/produtora, a contagem é feita por **obra** (título normalizado + data), e não por id | 223 filmes com 411 ids excedentes. O ranking do ator líder caiu de **64 para 13** filmes, o valor real |
+| 8 | **Risco de dupla contagem nas relações N:N** entre filmes e gêneros/pessoas/produtoras | Comparação da receita total somada pela fato e após um join direto com a bridge de gêneros | Métricas somadas **apenas na fato** (1 linha por filme); bridges usadas só para filtrar e agrupar, com `COUNT(DISTINCT)` | Um join ingênuo com a bridge **triplicaria a receita**: US$ 162 bi → US$ 484 bi |
+
+### Validações automáticas no pipeline
+
+Além dos tratamentos, o pipeline **interrompe a execução** se alguma garantia for violada. Isso evita publicar dados incorretos na Gold:
+
+- Unicidade das surrogate keys e da chave natural em todas as dimensões.
+- Grão da fato: número de linhas igual ao número de filmes lançados.
+- Integridade referencial: 0 registros órfãos nas 8 chaves estrangeiras.
+- Tabela RAG: número de documentos igual ao número de filmes, com 0 documentos nulos.
+
+---
+
+## 🧠 Decisões Técnicas
+
+Cada decisão abaixo tem uma alternativa mais simples que foi **descartada de propósito**.
+
+### Surrogate keys com `sha2`, e não `row_number()` ou `monotonically_increasing_id()`
+O hash da chave natural é **determinístico**: o mesmo filme recebe sempre a mesma `sk_movie_id`, em qualquer execução do Job. Com `row_number()`, a entrada de um filme novo deslocaria as chaves de todos os outros; com `monotonically_increasing_id()`, as chaves mudam conforme o particionamento dos dados. Nos dois casos, dashboards e consultas que guardam referências às chaves ficariam inconsistentes. O `sha2` gera texto, então os primeiros 60 bits do hash são convertidos para `BIGINT`, como exige o modelo. A unicidade é validada em todas as dimensões para descartar colisões.
+
+### Bronze inteira como `STRING`
+Com `inferSchema=True`, o Spark converteria valores como `"154,34"` ou `"$ 97000000"` em `NULL` **já na ingestão**, e a informação original se perderia antes de qualquer tratamento. Manter tudo como texto cumpre a regra "sem alteração de conteúdo" e deixa a tipagem para a Silver, onde cada sujeira é tratada de forma explícita e documentada.
+
+### `try_cast` em vez de `cast`
+O Databricks Serverless roda com **ANSI mode ligado**. Nesse modo, um `cast("abc" AS INT)` **lança erro** e derruba o pipeline inteiro, em vez de devolver `NULL`. Como o column shift espalha textos por colunas numéricas, `try_cast` e `try_to_timestamp` são a forma de converter o que é válido e transformar o resto em `NULL` sem interromper a execução.
+
+### Lucro `NULL` quando falta orçamento ou receita (e não 0)
+Tratar um valor ausente como zero **inventaria resultados**: um filme com receita conhecida e orçamento ausente apareceria com 100% de lucro, e o caso contrário com prejuízo total. A subtração com `NULL` devolve `NULL` sem erro, o que é o comportamento correto: o lucro é **desconhecido**, não zero. A margem percentual só é calculada quando a receita é maior que zero, evitando divisão por zero.
+
+### Notas fora de 0–10 viram `NULL`, sem dividir por 10
+Um valor como `79.97` sugere erro de escala ×10, mas não há como garantir que o fator seja sempre 10. Corrigir por suposição poderia gerar notas plausíveis e erradas. Seguindo o escopo, valores fora do intervalo são desconsiderados.
+
+### Cotação mais recente para a conversão em BRL
+Os filmes não têm data de transação, e a série PTAX cobre só os últimos dias. Um join pela data de lançamento não encontraria cotação para praticamente nenhum filme. A conversão usa a **cotação mais recente** (valor atual em reais), e a data e a taxa aplicadas ficam gravadas na tabela para rastreabilidade.
+
+### Bronze em Append; Silver e Gold em Overwrite
+A Bronze guarda o **histórico** de todas as cargas, como pede o escopo. Silver e Gold são **reconstruídas a partir da Bronze completa** a cada execução, com deduplicação pela carga mais recente. Isso torna o pipeline **idempotente**: rodar o Job duas vezes produz o mesmo resultado, sem duplicar registros.
+
+### `dim_movies` com todos os filmes; fato só com os lançados
+A dimensão descreve o **catálogo inteiro** (inclusive filmes planejados ou em produção), o que permite, por exemplo, que o assistente de IA responda sobre lançamentos futuros. O recorte "somente lançados" define o **grão da fato**, onde estão as métricas de desempenho.
+
+### `LEFT JOIN` na construção da fato e da tabela RAG
+Um `INNER JOIN` com as métricas financeiras eliminaria os filmes sem orçamento ou receita, que são a maioria. Com `LEFT JOIN`, todo filme lançado continua na fato com métricas `NULL`, e o grão é validado ao final (linhas da fato = filmes lançados).
+
+### `coalesce` com fallback antes da concatenação (RAG)
+`concat()` retorna `NULL` se qualquer campo for nulo, e o filme **sumiria silenciosamente** da base vetorial. Cada campo recebe um texto de fallback (`"valor não divulgado"`, `"diretor não informado"`) **antes** da concatenação. O fallback indica ao LLM que o dado não existe, em vez de induzi-lo a responder "faturou US$ 0".
+
+### Janela de tempo relativa à base, e não à data atual
+Nas perguntas de "últimos 2 e 5 anos", a referência é a **data de lançamento realizada mais recente da base**, e não `current_date()`. A base é um retrato histórico: usar a data de hoje poderia deixar a janela vazia se os dados fossem antigos. O cálculo usa `add_months`, que respeita anos bissextos e meses de tamanhos diferentes.
+
+### `RANK()` com filtro de posição, e não `LIMIT`
+`LIMIT 10` corta empates arbitrariamente. Com `RANK()` e `WHERE posicao <= 10`, filmes empatados na última posição aparecem todos, o que é o resultado justo.
 
 ## 📊 Analytics
 

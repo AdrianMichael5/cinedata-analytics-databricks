@@ -6,7 +6,7 @@ Pipeline ETL completo sobre um catálogo de filmes (base combinada **TMDB/IMDb**
 
 ---
 
-## 📌 Contexto
+## 📌 Contexto 
 
 A **CineData Analytics** é uma empresa fictícia de inteligência de mercado do setor audiovisual. Os dados brutos chegam **intencionalmente sujos e fragmentados** em 5 arquivos CSV, e o objetivo é transformá-los em dados confiáveis para:
 

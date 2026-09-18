@@ -229,21 +229,6 @@ Nas perguntas 5 e 6, a janela de tempo é relativa à **data de lançamento real
 
 ---
 
-## ⚙️ Orquestração
-
-Job **`cinedata_etl_pipeline`** (`jobs/job.yaml`), executado em **Serverless**:
-
-```
-to_Bronze  ──►  to_Silver  ──►  to_Gold
-```
-
-- Dependências explícitas: cada task só inicia após o **sucesso** da anterior.
-- Agendamento diário às **03:00 (America/Sao_Paulo)**, simulando uma rotina de produção.
-
-![Execução do Job](docs/execucao_job.png)
-
----
-
 ### Painel executivo (Databricks AI/BI Dashboard)
 
 As mesmas perguntas de negócio, publicadas como dashboard sobre a camada Gold:
@@ -259,6 +244,20 @@ As mesmas perguntas de negócio, publicadas como dashboard sobre a camada Gold:
 **Tendência:** receita por ano de lançamento, com o impacto da pandemia em 2020
 ![Dashboard - Tendência](docs/dashboard_3_tendencia.png)
 
+## ⚙️ Orquestração
+
+Job **`cinedata_etl_pipeline`** (`jobs/job.yaml`), executado em **Serverless**:
+
+```
+to_Bronze  ──►  to_Silver  ──►  to_Gold
+```
+
+- Dependências explícitas: cada task só inicia após o **sucesso** da anterior.
+- Agendamento diário às **03:00 (America/Sao_Paulo)**, simulando uma rotina de produção.
+
+![Execução do Job](docs/execucao_job.png)
+
+---
 
 ## ▶️ Como executar
 

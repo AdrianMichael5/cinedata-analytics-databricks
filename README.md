@@ -278,6 +278,16 @@ to_Bronze  ──►  to_Silver  ──►  to_Gold
 
 ---
 
+## 🚀 Próximos passos
+
+- **Carga incremental com `MERGE`** na Silver, em vez de reprocessar a Bronze completa a cada execução.
+- **Criação do índice no Vector Search** sobre a `gold_genai_movies_context` e de um protótipo do assistente RAG.
+- **Ordem de créditos do elenco** (`posexplode` na Silver) para identificar os protagonistas reais na tabela de contexto.
+- **Deduplicação de filmes cadastrados com ids diferentes** diretamente na Silver, com uma chave de obra (título + data).
+- **Testes automatizados e CI** (GitHub Actions) para validar as regras de limpeza a cada alteração.
+
+---
+
 ## ⚠️ Limitações conhecidas
 
 - **Cotação via arquivo:** o Free Edition restringe o acesso de saída à internet a partir do Serverless. A resposta da API PTAX foi obtida pelo endpoint oficial e salva como `cotacao_dolar.json` no Volume. A Silver estende a série até a data de execução com forward fill.

@@ -11,7 +11,7 @@ Pipeline ETL completo sobre um catálogo de filmes (base combinada **TMDB/IMDb**
 A **CineData Analytics** é uma empresa fictícia de inteligência de mercado do setor audiovisual. Os dados brutos chegam **intencionalmente sujos e fragmentados** em 5 arquivos CSV, e o objetivo é transformá-los em dados confiáveis para:
 
 - **BI:** modelagem dimensional (Star Schema) com métricas financeiras e de engajamento;
-- **IA:** uma tabela de documentos em texto corrido para alimentar um **Vector Search** (RAG) de um assistente baseado em LLM;
+- **IA:** uma tabela de documentos em texto corrido, pronta para ser vetorizada pelo time de IA em um Vector Search (RAG) de um assistente baseado em LLM;
 - **Financeiro:** valores de orçamento e receita também em **Reais (BRL)**, usando a cotação PTAX do Banco Central.
 
 ---
@@ -26,6 +26,7 @@ A **CineData Analytics** é uma empresa fictícia de inteligência de mercado do
 | **Delta Lake** | Formato de todas as tabelas (append na Bronze, overwrite na Silver/Gold) |
 | **PySpark / Spark SQL** | Transformações, limpeza, modelagem e analytics |
 | **Databricks Workflows** | Orquestração do pipeline com dependências e agendamento |
+| **Databricks AI/BI Dashboard** | Painel executivo sobre a camada Gold |
 | **API PTAX (Banco Central)** | Cotação do dólar para conversão USD → BRL |
 
 ---
@@ -44,11 +45,11 @@ cinedata-analytics-databricks/
 │   ├── execucao_job.png            # Print da execução bem-sucedida do Job
 │   ├── catalogo_bronze.png         # Tabelas da camada Bronze no Unity Catalog
 │   ├── catalogo_silver.png         # Tabelas da camada Silver no Unity Catalog
-│   └── catalogo_gold.png           # Tabelas da camada Gold no Unity Catalog
+│   ├── catalogo_gold.png           # Tabelas da camada Gold no Unity Catalog
 │   ├── dashboard_1_visao_geral.png # Dashboard: KPIs e top 10 receita
 │   ├── dashboard_2_rankings.png    # Dashboard: gêneros, produtoras, popularidade, atores
 │   ├── dashboard_3_tendencia.png   # Dashboard: receita por ano
-│   ├── dashboard.pdf               # Painel executivo completo (PDF)
+│   └── dashboard.pdf               # Painel executivo completo (PDF)
 ├── .gitignore
 └── README.md
 ```
@@ -214,6 +215,8 @@ Nas perguntas de "últimos 2 e 5 anos", a referência é a **data de lançamento
 ### `RANK()` com filtro de posição, e não `LIMIT`
 `LIMIT 10` corta empates arbitrariamente. Com `RANK()` e `WHERE posicao <= 10`, filmes empatados na última posição aparecem todos, o que é o resultado justo.
 
+---
+
 ## 📊 Analytics
 
 Consultas em Spark SQL no final do `Silver_to_Gold`:
@@ -244,6 +247,8 @@ As mesmas perguntas de negócio, publicadas como dashboard sobre a camada Gold:
 **Tendência:** receita por ano de lançamento, com o impacto da pandemia em 2020
 ![Dashboard - Tendência](docs/dashboard_3_tendencia.png)
 
+---
+
 ## ⚙️ Orquestração
 
 Job **`cinedata_etl_pipeline`** (`jobs/job.yaml`), executado em **Serverless**:
@@ -253,7 +258,7 @@ to_Bronze  ──►  to_Silver  ──►  to_Gold
 ```
 
 - Dependências explícitas: cada task só inicia após o **sucesso** da anterior.
-- Agendamento diário às **03:00 (America/Sao_Paulo)**, simulando uma rotina de produção.
+- Agendamento diário às **05:00 (America/Sao_Paulo)**, simulando uma rotina de produção: o pipeline roda fora do horário comercial e os dados ficam atualizados antes do início do expediente.
 
 ![Execução do Job](docs/execucao_job.png)
 
